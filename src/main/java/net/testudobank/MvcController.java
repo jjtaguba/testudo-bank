@@ -50,6 +50,7 @@ public class MvcController {
   public static String CRYPTO_HISTORY_SELL_ACTION = "Sell";
   public static String CRYPTO_HISTORY_BUY_ACTION = "Buy";
   public static Set<String> SUPPORTED_CRYPTOCURRENCIES = new HashSet<>(Arrays.asList("ETH", "SOL"));
+  private static double BALANCE_INTEREST_RATE = 1.015;
 
   public MvcController(@Autowired JdbcTemplate jdbcTemplate, @Autowired CryptoPriceClient cryptoPriceClient) {
     this.jdbcTemplate = jdbcTemplate;
@@ -80,8 +81,8 @@ public class MvcController {
   @GetMapping("/login")
 	public String showLoginForm(Model model) {
 		User user = new User();
-		model.addAttribute("user", user);
-		
+    model.addAttribute("user", user);
+
 		return "login_form";
 	}
 
@@ -188,6 +189,7 @@ public class MvcController {
    * @param user
    */
   private void updateAccountInfo(User user) {
+    applyInterest(user);
     List<Map<String,Object>> overdraftLogs = TestudoBankRepository.getOverdraftLogs(jdbcTemplate, user.getUsername());
     String logs = HTML_LINE_BREAK;
     for(Map<String, Object> overdraftLog : overdraftLogs){
@@ -247,6 +249,17 @@ public class MvcController {
   private static Date convertLocalDateTimeToDate(LocalDateTime ldt){
     Date dateTime = Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant());
     return dateTime;
+  }
+
+  /**
+   * The Helper method for submitWithdraw()
+   * Applies interest rate to an input penny amount.
+   * @param user
+   * @return
+   */
+
+  private int applyInterestRateToPennyAmount(int pennyAmount) {
+    return (int) (pennyAmount * INTEREST_RATE);
   }
 
   // HTML POST HANDLERS ////
@@ -407,7 +420,7 @@ public class MvcController {
     int userOverdraftBalanceInPennies = TestudoBankRepository.getCustomerOverdraftBalanceInPennies(jdbcTemplate, userID);
     if (userWithdrawAmtInPennies > userBalanceInPennies) { // if withdraw amount exceeds main balance, withdraw into overdraft with interest fee
       int excessWithdrawAmtInPennies = userWithdrawAmtInPennies - userBalanceInPennies;
-      int newOverdraftIncreaseAmtAfterInterestInPennies = (int)(excessWithdrawAmtInPennies * INTEREST_RATE);
+      int newOverdraftIncreaseAmtAfterInterestInPennies = applyInterestRateToPennyAmount(excessWithdrawAmtInPennies);
       int newOverdraftBalanceInPennies = userOverdraftBalanceInPennies + newOverdraftIncreaseAmtAfterInterestInPennies;
 
       // abort withdraw transaction if new overdraft balance exceeds max overdraft limit
@@ -793,6 +806,16 @@ public class MvcController {
     } else {
       return "welcome";
     }
+  }
+
+  /**
+   * 
+   * 
+   * @param user
+   * @return "account_info" if interest applied. Otherwise, redirect to "welcome" page.
+   */
+  public String applyInterest(@ModelAttribute("user") User user) {
+    return "welcome";
   }
 
 }
